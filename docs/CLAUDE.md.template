@@ -1,0 +1,99 @@
+# CLAUDE.md — {{PROJECT_NAME}}
+
+<!-- TODO: Personaliza las secciones "Stack" y "Comandos de desarrollo" para tu proyecto -->
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Stack
+
+<!-- TODO: define el stack de tu proyecto aquí -->
+- {{STACK_DESCRIPTION}}
+
+## Comandos de desarrollo
+
+<!-- TODO: ajusta los comandos según tu stack -->
+
+```bash
+# Ejemplo para uv + Django:
+uv sync                                    # instala deps
+uv run python manage.py runserver          # dev server
+uv run python manage.py makemigrations     # migraciones (solo el desarrollador)
+uv run python manage.py migrate
+uv run pytest                              # suite completa
+uv run pytest apps/<app>/tests/ -k <name>  # un test concreto
+uv run ruff check --fix . && uv run ruff format .
+uv run mypy .
+uv add <pkg>        # runtime dep
+uv add --dev <pkg>  # dev dep
+```
+
+## Arquitectura (HackSoft Nivel 2)
+
+Una app Django por **bounded context**. Archivos canónicos por app:
+
+- `models.py` — ORM + invariantes (`clean()`, `Meta.constraints`).
+- `services.py` — escritura. **`@transaction.atomic` siempre**. Funciones kwargs-only.
+- `selectors.py` — lectura. `select_related`/`prefetch_related` al tocar relaciones.
+- `validators.py`, `exceptions.py`, `admin.py`.
+- `api/{serializers,views,permissions,urls}.py`.
+- `tests/{factories.py,test_services.py,test_selectors.py,test_api.py}`.
+
+`apps/core/` contiene el shared kernel (base classes, VOs comunes, excepciones base).
+
+**Reglas no negociables:**
+
+- **Views no tocan el ORM** — llaman a `services`/`selectors`.
+- **Serializers no mutan BD** — delegan en un service en el ViewSet.
+- **Comunicación entre apps por ID**, nunca `from apps.otra.models import ...`. Usa el selector público de la otra app.
+- **Imports al tope** (salvo circular imports con justificación explícita).
+- **Las migraciones las ejecuta el desarrollador**, no los agentes.
+- Convenciones DRF: serializer **por acción**, `permission_classes` **explícitos** por vista, versionado por URL `/api/v1/`, paginación global.
+- **Seguridad:** sin secretos hardcodeados, validación en toda entrada externa, `AllowAny` solo con justificación.
+
+## Orquestador de sub-agentes
+
+Los sub-agentes viven en `.claude/agents/` y ejecutan el flujo:
+
+```
+Usuario → project-scout (read-only context)
+       → task-planner → backend-engineer (mini-plan)
+                     → test-engineer (TDD rojo)
+                     → backend-engineer (verde + refactor)
+                     → code-reviewer
+                     → documentador
+                     → git-committer
+```
+
+- **`project-scout`** — read-only, modelo `haiku`. Explora el repo y devuelve rutas + hallazgos. Se invoca **al inicio** para que el orquestador no malgaste contexto en exploración manual.
+- **`task-planner`** — descompone el requerimiento en tareas atómicas persistidas en `.claude/tasks/<feature-slug>/`.
+- **`backend-engineer`** — 3 fases: (A) mini-plan, (B) implementación respetando Nivel 2, (C) `ruff` + `mypy` + `pytest` + diff + changelog corto.
+- **`test-engineer`** — fase roja TDD. Solo escribe en `apps/*/tests/**` y `conftest.py`.
+- **`code-reviewer`** — checklist fijo, solo lectura, veredicto `approve` | `request-changes`.
+- **`documentador`** — `CHANGELOG.md` (Conventional Commits) + `README.md` cuando hay impacto externo. Solo escribe `.md`.
+- **`git-committer`** — crea commits atómicos con mensajes en inglés siguiendo Conventional Commits.
+
+Cada agente declara en su prompt las **skills** que carga al inicio. Las skills viven en `.claude/skills/` y son:
+
+**Compartidas:** `project-conventions` · `hacksoft-layered-architecture` · `drf-conventions` · `performance-patterns` · `changelog-conventions`.
+**Específicas:** `task-breakdown-templates` · `pytest-django-patterns` · `factory-boy-patterns` · `drf-api-testing-patterns` · `django-app-scaffold` · `service-selector-patterns` · `drf-viewset-wiring` · `git-commit-conventions`.
+
+`.claude/skills/project-conventions/SKILL.md` es la source of truth — si algo en este archivo entra en conflicto con una skill, gana la skill.
+
+## Política de invocación del orquestador
+
+Al invocar cualquiera de los sub-agentes, usa **siempre** `run_in_background: true`.
+
+Regla adicional — **`project-scout` primero**: ante cualquier solicitud no trivial, el orquestador despacha primero a `project-scout` con el scope de la búsqueda, espera su informe, y recién entonces continúa con `task-planner` o el agente que corresponda.
+
+Razones:
+- Mantiene la sesión principal libre para preguntas/revisiones paralelas.
+- Evita saturar el contexto principal con la traza tool-by-tool del agente.
+- Solo el resumen final llega a la sesión principal.
+
+## Memory Protocol (Engram)
+
+- Al iniciar una sesión no trivial, llama `mem_session_start`.
+- Tras cualquier compaction o context reset, llama `mem_context` antes de continuar.
+- Guardá con `mem_save` toda decisión arquitectónica, bugfix no obvio, o convención descubierta. Formato: **What / Why / Where / Learned**.
+- Antes de re-implementar algo, `mem_search` para evitar duplicar trabajo.
+- Al cerrar sesión, llama `mem_session_summary`.
