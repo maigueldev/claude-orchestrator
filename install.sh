@@ -21,6 +21,7 @@ SKILLS_DIR="${GLOBAL_DIR}/skills"
 VERSION_FILE="${GLOBAL_DIR}/.orchestrator-version"
 
 ALL_AGENTS=(
+  "product-manager"
   "project-scout"
   "task-planner"
   "backend-engineer"
@@ -30,6 +31,7 @@ ALL_AGENTS=(
   "git-committer"
 )
 AGENT_DESCRIPTIONS=(
+  "sub-orquestador (opus) — gestiona el pipeline completo de una feature"
   "explorador read-only (haiku) — se invoca primero"
   "descomposición de requerimientos en tareas atómicas"
   "implementación HackSoft Nivel 2 (ruff + mypy + pytest)"
@@ -201,7 +203,7 @@ EOF
 # ─── Interactive agent selection ─────────────────────────────────────────────
 
 interactive_agent_selection() {
-  local selected=(1 1 1 1 1 1 1)
+  local selected=(1 1 1 1 1 1 1 1)
   local choice
 
   while true; do
@@ -218,12 +220,12 @@ interactive_agent_selection() {
     read -r choice
 
     case "$choice" in
-      [1-7])
+      [1-8])
         local idx=$((choice - 1))
         [[ "${selected[$idx]}" == "1" ]] && selected[$idx]=0 || selected[$idx]=1
         ;;
-      a) selected=(1 1 1 1 1 1 1) ;;
-      n) selected=(0 0 0 0 0 0 0) ;;
+      a) selected=(1 1 1 1 1 1 1 1) ;;
+      n) selected=(0 0 0 0 0 0 0 0) ;;
       q) break ;;
       *) warn "Opción inválida." ;;
     esac

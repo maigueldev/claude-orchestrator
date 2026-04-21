@@ -50,21 +50,30 @@ Una app Django por **bounded context**. Archivos canónicos por app:
 - Convenciones DRF: serializer **por acción**, `permission_classes` **explícitos** por vista, versionado por URL `/api/v1/`, paginación global.
 - **Seguridad:** sin secretos hardcodeados, validación en toda entrada externa, `AllowAny` solo con justificación.
 
-## Orquestador de sub-agentes
+## Orquestación en dos niveles
 
-Los sub-agentes viven en `.claude/agents/` y ejecutan el flujo:
+El orquestador principal delega **siempre** al `product-manager` con `run_in_background: true`.
+El `product-manager` es el sub-orquestador: coordina el pipeline completo y reporta solo al terminar.
 
 ```
-Usuario → project-scout (read-only context)
-       → task-planner → backend-engineer (mini-plan)
-                     → test-engineer (TDD rojo)
-                     → backend-engineer (verde + refactor)
-                     → code-reviewer
-                     → documentador
-                     → git-committer
+Usuario
+  → product-manager (sub-orquestador, run_in_background:true)
+       → project-scout   (exploración read-only)
+       → task-planner    (descomposición atómica)
+       → backend-engineer (implementación A+B+C)
+       → [test-engineer] (TDD rojo, si se pide explícitamente)
+       → [backend-engineer] (verde + refactor, si TDD)
+       → code-reviewer   (checklist + veredicto)
+       → [fix loop: backend-engineer → code-reviewer, max 2x]
+       → documentador    (CHANGELOG + README)
+       → git-committer   (commits atómicos)
+  ← PM Report (estado, features, tests, archivos, commits)
 ```
 
-- **`project-scout`** — read-only, modelo `haiku`. Explora el repo y devuelve rutas + hallazgos. Se invoca **al inicio** para que el orquestador no malgaste contexto en exploración manual.
+### Agentes
+
+- **`product-manager`** — sub-orquestador, modelo `opus`. Gestiona el pipeline completo. **Nunca escribe código ni docs directamente.**
+- **`project-scout`** — read-only, modelo `haiku`. Explora el repo y devuelve rutas + hallazgos. Se invoca al inicio para no saturar el contexto principal.
 - **`task-planner`** — descompone el requerimiento en tareas atómicas persistidas en `.claude/tasks/<feature-slug>/`.
 - **`backend-engineer`** — 3 fases: (A) mini-plan, (B) implementación respetando Nivel 2, (C) `ruff` + `mypy` + `pytest` + diff + changelog corto.
 - **`test-engineer`** — fase roja TDD. Solo escribe en `apps/*/tests/**` y `conftest.py`.
@@ -72,23 +81,19 @@ Usuario → project-scout (read-only context)
 - **`documentador`** — `CHANGELOG.md` (Conventional Commits) + `README.md` cuando hay impacto externo. Solo escribe `.md`.
 - **`git-committer`** — crea commits atómicos con mensajes en inglés siguiendo Conventional Commits.
 
+### Política de invocación del orquestador principal
+
+- **Delegar siempre al `product-manager`** con `run_in_background: true`.
+- El orquestador **no invoca directamente** a project-scout, task-planner, backend-engineer, etc. — eso es responsabilidad del PM.
+- El orquestador solo recibe el **PM Report** al final.
+- Excepción: consultas de estado o exploración puntual sin implementación pueden ir directamente a `project-scout`.
+
 Cada agente declara en su prompt las **skills** que carga al inicio. Las skills viven en `.claude/skills/` y son:
 
 **Compartidas:** `project-conventions` · `hacksoft-layered-architecture` · `drf-conventions` · `performance-patterns` · `changelog-conventions`.
 **Específicas:** `task-breakdown-templates` · `pytest-django-patterns` · `factory-boy-patterns` · `drf-api-testing-patterns` · `django-app-scaffold` · `service-selector-patterns` · `drf-viewset-wiring` · `git-commit-conventions`.
 
 `.claude/skills/project-conventions/SKILL.md` es la source of truth — si algo en este archivo entra en conflicto con una skill, gana la skill.
-
-## Política de invocación del orquestador
-
-Al invocar cualquiera de los sub-agentes, usa **siempre** `run_in_background: true`.
-
-Regla adicional — **`project-scout` primero**: ante cualquier solicitud no trivial, el orquestador despacha primero a `project-scout` con el scope de la búsqueda, espera su informe, y recién entonces continúa con `task-planner` o el agente que corresponda.
-
-Razones:
-- Mantiene la sesión principal libre para preguntas/revisiones paralelas.
-- Evita saturar el contexto principal con la traza tool-by-tool del agente.
-- Solo el resumen final llega a la sesión principal.
 
 ## Memory Protocol (Engram)
 
