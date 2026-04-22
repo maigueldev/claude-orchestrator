@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "capacitor-splash-screen": {
+      "source": "cap-go/capgo-skills",
+      "sourceType": "github",
+      "computedHash": "0e00503e10fc8478342b317099b0141c2c0d928fa52fac957a4d34c1e5453bb3"
+    }
+  }
+}

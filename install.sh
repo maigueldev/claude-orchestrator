@@ -32,6 +32,7 @@ ALL_AGENTS=(
   "designer"
   "frontend-engineer"
   "ux-ui-reviewer"
+  "mobile-engineer"
 )
 AGENT_DESCRIPTIONS=(
   "sub-orquestador (opus) — gestiona el pipeline completo de una feature"
@@ -45,6 +46,7 @@ AGENT_DESCRIPTIONS=(
   "diseña interfaces (Pencil/Design System) — propone UI, tokens, atomic design"
   "implementación Vue 4 + Nuxt por capas (ESLint + TS + Vitest)"
   "revisión WCAG/UX (read-only) — aprueba o pide cambios"
+  "iOS/Android nativo + React Native/Flutter/Capacitor — arquitecto mobile senior"
 )
 
 ALL_SKILLS=(
@@ -67,6 +69,7 @@ ALL_SKILLS=(
   "design-system-conventions"
   "pencil-design-workflow"
   "accessibility-checklist"
+  "capacitor-splash-screen"
 )
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
